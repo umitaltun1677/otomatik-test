@@ -16,10 +16,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Playwright
+      - name: Install Playwright + Browsers
         run: |
           npm init -y
           npm install playwright
+          npx playwright install --with-deps chromium   # ← Bu satır eklendi
 
       - name: Run Monitoring Script
         run: node monitor.js
@@ -30,3 +31,12 @@ jobs:
           name: screenshots
           path: screenshots/
           retention-days: 7
+
+      - name: Check for Issues
+        id: check
+        run: |
+          if [ -f has_issue.txt ]; then
+            echo "has_issue=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_issue=false" >> $GITHUB_OUTPUT
+          fi
