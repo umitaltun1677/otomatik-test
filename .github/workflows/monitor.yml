@@ -20,8 +20,9 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Bağımlılıkları Yükle
-      run: npm install
+    - name: Gerekli Kütüphaneleri Doğrudan Kur
+      # package.json olmadan Playwright kütüphanesini doğrudan kuruyoruz
+      run: npm install playwright
 
     - name: Playwright Tarayıcılarını Kur
       run: npx playwright install --with-deps chromium
