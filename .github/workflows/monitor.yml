@@ -2,8 +2,8 @@ name: Blog Monitor
 
 on:
   schedule:
-    - cron: '0 * * * *'     # Her saat başı (00, 01, 02... dakikası)
-  workflow_dispatch:        # Manuel çalıştırmak için buton
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   monitor:
@@ -29,19 +29,4 @@ jobs:
         with:
           name: screenshots
           path: screenshots/
-          retention-days: 7        # 7 gün sakla (daha uzun istersen 30 yap)
-                - name: Send Email Report
-        if: always()  # Her zaman çalışsın (hata olsa bile)
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: Blog Monitoring Raporu - ${{ github.repository }}
-          to: umitaltun1677@gmail.com
-          from: GitHub Actions <github@noreply.com>
-          body: |
-            Blog izleme tamamlandı. 
-            Detaylı screenshot'lar için GitHub Actions'a bakın.
-          attachments: screenshots/*.png
+          retention-days: 7
