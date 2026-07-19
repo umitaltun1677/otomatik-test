@@ -5,6 +5,30 @@ const path = require('path');
 const BASE_URL = 'https://globalmarketsbrief.blogspot.com';
 const LOAD_THRESHOLD = 8;
 
+const testConfigs = [
+  { 
+    name: 'desktop-us', 
+    width: 1920, 
+    height: 1080, 
+    isMobile: false,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+  },
+  { 
+    name: 'mobile-android', 
+    width: 390, 
+    height: 844, 
+    isMobile: true,
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36'
+  },
+  { 
+    name: 'mobile-ios', 
+    width: 414, 
+    height: 896, 
+    isMobile: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+  }
+];
+
 async function monitor() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const screenshotDir = path.join(process.cwd(), 'screenshots');
@@ -13,72 +37,61 @@ async function monitor() {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }
 
-  const tests = [
-    { name: 'desktop', width: 1920, height: 1080, isMobile: false },
-    { name: 'mobile', width: 390, height: 844, isMobile: true }
-  ];
-
   let hasIssue = false;
   const issues = [];
 
-  for (const test of tests) {
-    console.log(`\n=== ${test.name.toUpperCase()} TESTİ BAŞLADI ===`);
+  for (const config of testConfigs) {
+    console.log(`\n=== ${config.name.toUpperCase()} TESTİ ===`);
 
     const browser = await chromium.launch();
     const context = await browser.newContext({
-      viewport: { width: test.width, height: test.height },
-      isMobile: test.isMobile,
-      userAgent: test.isMobile 
-        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      viewport: { width: config.width, height: config.height },
+      isMobile: config.isMobile,
+      userAgent: config.userAgent
     });
 
     const page = await context.newPage();
 
     try {
-      // Ana sayfa
       await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 30000 });
 
       const posts = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a[href*="blogspot.com/202"]'));
-        return [...new Set(links.map(a => a.href))].slice(0, 6); // 6 yazı yeter
+        return [...new Set(links.map(a => a.href))].slice(0, 5);
       });
 
       for (let i = 0; i < posts.length; i++) {
         const url = posts[i];
-        const startTime = Date.now();
+        const start = Date.now();
         await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-        const loadTime = (Date.now() - startTime) / 1000;
+        const loadTime = (Date.now() - start) / 1000;
 
-        const fileName = `${timestamp}-${test.name}-post-${i+1}`;
-        await page.screenshot({ 
-          path: `${screenshotDir}/${fileName}.png`, 
-          fullPage: true 
-        });
+        const filename = `${timestamp}-${config.name}-post-${i+1}.png`;
+        await page.screenshot({ path: path.join(screenshotDir, filename), fullPage: true });
 
         if (loadTime > LOAD_THRESHOLD) {
           hasIssue = true;
-          issues.push({ device: test.name, url, loadTime: loadTime.toFixed(1) });
-          console.log(`⚠️ SORUN [${test.name}] ${loadTime.toFixed(1)}s`);
+          issues.push({ device: config.name, loadTime: loadTime.toFixed(1), url });
+          console.log(`⚠️ SORUN [${config.name}] ${loadTime.toFixed(1)}s`);
         } else {
-          console.log(`✅ [${test.name}] ${loadTime.toFixed(1)}s`);
+          console.log(`✅ [${config.name}] ${loadTime.toFixed(1)}s`);
         }
       }
-    } catch (e) {
-      console.error(`Hata (${test.name}):`, e.message);
+    } catch (err) {
+      console.error(`Hata ${config.name}:`, err.message);
     } finally {
       await browser.close();
     }
   }
 
   if (hasIssue) {
-    fs.writeFileSync(`${screenshotDir}/${timestamp}-ISSUES.txt`, 
-      `🚨 SORUN TESPİT EDİLDİ!\n\n` + 
+    fs.writeFileSync(path.join(screenshotDir, `${timestamp}-ISSUES.txt`), 
+      `🚨 SORUN TESPİT EDİLDİ (${new Date().toLocaleString()})\n\n` +
       issues.map(i => `[${i.device}] ${i.loadTime}s → ${i.url}`).join('\n'));
     fs.writeFileSync('has_issue.txt', 'true');
   }
 
-  console.log('\nTüm testler tamamlandı.');
+  console.log('Tüm testler tamamlandı.');
 }
 
-monitor();
+monitor().catch(console.error);
