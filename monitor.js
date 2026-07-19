@@ -5,8 +5,8 @@ const path = require('path');
 const BASE_URL = 'https://globalmarketsbrief.blogspot.com';
 const LOAD_THRESHOLD = 8;
 
-// SMARTPROXY (DECODO) BİLGİLERİNİZ
-const PROXY_SERVER = 'http://{spee4t5rds}:{q5kpbCV515rSjjxHq}@gate.decodo.com:10001'; // ← Burayı kendi bilginizle değiştirin
+// SMARTPROXY / DECODO BİLGİLERİNİZ
+const PROXY_SERVER = 'http://{spee4t5rds}:{~q5kpbCV515rSjjxHq}@gate.decodo.com:10001'; // ← Burayı kendi proxy'inizle değiştirin
 
 async function monitor() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -24,9 +24,10 @@ async function monitor() {
 
   let hasIssue = false;
   const issues = [];
+  let totalScans = 0;
 
   for (const config of testConfigs) {
-    console.log(`\n=== ${config.name.toUpperCase()} (Decodo ABD) ===`);
+    console.log(`\n=== ${config.name.toUpperCase()} TESTİ BAŞLADI ===`);
 
     const browser = await chromium.launch({
       proxy: { server: PROXY_SERVER }
@@ -43,18 +44,25 @@ async function monitor() {
     const page = await context.newPage();
 
     try {
-      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 45000 });
-
-      const posts = await page.evaluate(() => {
+      // Ana sayfadan TÜM yazı linklerini al
+      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+      
+      const postLinks = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a[href*="blogspot.com/202"]'));
-        return [...new Set(links.map(a => a.href))].slice(0, 5);
+        // Tekrarları temizle
+        const unique = [...new Set(links.map(a => a.href))];
+        return unique;
       });
 
-      for (let i = 0; i < posts.length; i++) {
-        const url = posts[i];
+      console.log(`Toplam ${postLinks.length} yazı bulundu.`);
+
+      for (let i = 0; i < postLinks.length; i++) {
+        const url = postLinks[i];
         const start = Date.now();
+        
         await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
         const loadTime = (Date.now() - start) / 1000;
+        totalScans++;
 
         const filename = `${timestamp}-${config.name}-post-${i+1}.png`;
         await page.screenshot({ path: path.join(screenshotDir, filename), fullPage: true });
@@ -74,14 +82,14 @@ async function monitor() {
     }
   }
 
+  console.log(`\nToplam ${totalScans} tarama tamamlandı.`);
+
   if (hasIssue) {
     fs.writeFileSync(path.join(screenshotDir, `${timestamp}-ISSUES.txt`), 
-      `🚨 Decodo ABD IP ile test - SORUN TESPİT EDİLDİ\n\n` +
+      `🚨 SORUN TESPİT EDİLDİ - Toplam ${totalScans} tarama\n\n` +
       issues.map(i => `[${i.device}] ${i.loadTime}s → ${i.url}`).join('\n'));
     fs.writeFileSync('has_issue.txt', 'true');
   }
-
-  console.log('\nTüm testler tamamlandı.');
 }
 
 monitor().catch(console.error);
