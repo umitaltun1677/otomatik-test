@@ -5,29 +5,8 @@ const path = require('path');
 const BASE_URL = 'https://globalmarketsbrief.blogspot.com';
 const LOAD_THRESHOLD = 8;
 
-const testConfigs = [
-  { 
-    name: 'desktop-us', 
-    width: 1920, 
-    height: 1080, 
-    isMobile: false,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-  },
-  { 
-    name: 'mobile-android', 
-    width: 390, 
-    height: 844, 
-    isMobile: true,
-    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36'
-  },
-  { 
-    name: 'mobile-ios', 
-    width: 414, 
-    height: 896, 
-    isMobile: true,
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
-  }
-];
+// SMARTPROXY (DECODO) BİLGİLERİNİZ
+const PROXY_SERVER = 'http://{spee4t5rds}:{q5kpbCV515rSjjxHq}@gate.decodo.com:10001'; // ← Burayı kendi bilginizle değiştirin
 
 async function monitor() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -37,23 +16,34 @@ async function monitor() {
     fs.mkdirSync(screenshotDir, { recursive: true });
   }
 
+  const testConfigs = [
+    { name: 'desktop-us', width: 1920, height: 1080, isMobile: false },
+    { name: 'mobile-android', width: 390, height: 844, isMobile: true },
+    { name: 'mobile-ios', width: 414, height: 896, isMobile: true }
+  ];
+
   let hasIssue = false;
   const issues = [];
 
   for (const config of testConfigs) {
-    console.log(`\n=== ${config.name.toUpperCase()} TESTİ ===`);
+    console.log(`\n=== ${config.name.toUpperCase()} (Decodo ABD) ===`);
 
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({
+      proxy: { server: PROXY_SERVER }
+    });
+
     const context = await browser.newContext({
       viewport: { width: config.width, height: config.height },
       isMobile: config.isMobile,
-      userAgent: config.userAgent
+      userAgent: config.isMobile 
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     });
 
     const page = await context.newPage();
 
     try {
-      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 45000 });
 
       const posts = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a[href*="blogspot.com/202"]'));
@@ -63,7 +53,7 @@ async function monitor() {
       for (let i = 0; i < posts.length; i++) {
         const url = posts[i];
         const start = Date.now();
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
         const loadTime = (Date.now() - start) / 1000;
 
         const filename = `${timestamp}-${config.name}-post-${i+1}.png`;
@@ -86,12 +76,12 @@ async function monitor() {
 
   if (hasIssue) {
     fs.writeFileSync(path.join(screenshotDir, `${timestamp}-ISSUES.txt`), 
-      `🚨 SORUN TESPİT EDİLDİ (${new Date().toLocaleString()})\n\n` +
+      `🚨 Decodo ABD IP ile test - SORUN TESPİT EDİLDİ\n\n` +
       issues.map(i => `[${i.device}] ${i.loadTime}s → ${i.url}`).join('\n'));
     fs.writeFileSync('has_issue.txt', 'true');
   }
 
-  console.log('Tüm testler tamamlandı.');
+  console.log('\nTüm testler tamamlandı.');
 }
 
 monitor().catch(console.error);
