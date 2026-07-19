@@ -2,11 +2,56 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-const BASE_URL = 'https://globalmarketsbrief.blogspot.com';
+const BASE_URL = 'https://blogspot.com';
 const LOAD_THRESHOLD = 8;
 
-// SMARTPROXY / DECODO BİLGİLERİNİZ
-const PROXY_SERVER = 'gate.decodo.com:10001:spee4t5rds:~q5kpbCV515rSjjxHq'; // ← Burayı kendi proxy'inizle değiştirin
+// === 1. GİTHUB SECRETS VEYA YEREL DOSYADAN PROXY OKUMA ===
+function loadProxies() {
+  try {
+    if (process.env.PROXY_LIST_SECRET) {
+      const proxies = process.env.PROXY_LIST_SECRET
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      console.log(`[BAŞARILI] GitHub Secrets üzerinden ${proxies.length} proxy yüklendi.`);
+      return proxies;
+    }
+    const filePath = path.join(process.cwd(), 'proxies.txt');
+    if (fs.existsSync(filePath)) {
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      const proxies = fileContent
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      console.log(`[BAŞARILI] Yerel proxies.txt dosyasından ${proxies.length} proxy yüklendi.`);
+      return proxies;
+    }
+    return [];
+  } catch (error) {
+    return [];
+  }
+}
+
+const ALL_PROXIES = loadProxies();
+
+// === 2. PLAYWRIGHT FORMATINA ÇEVİRME FONKSİYONU ===
+function getRandomPlaywrightProxy() {
+  if (ALL_PROXIES.length === 0) return null;
+  const randomIndex = Math.floor(Math.random() * ALL_PROXIES.length);
+  const rawProxy = ALL_PROXIES[randomIndex];
+  const parts = rawProxy.split(':');
+  
+  if (parts.length === 4) {
+    const [host, port, username, password] = parts;
+    return { server: `http://${host}:${port}`, username, password };
+  } else if (parts.length === 2) {
+    const [host, port] = parts;
+    return { server: `http://${host}:${port}` };
+  } else {
+    ALL_PROXIES.splice(randomIndex, 1);
+    return getRandomPlaywrightProxy();
+  }
+}
 
 async function monitor() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -29,8 +74,9 @@ async function monitor() {
   for (const config of testConfigs) {
     console.log(`\n=== ${config.name.toUpperCase()} TESTİ BAŞLADI ===`);
 
+    const selectedProxy = getRandomPlaywrightProxy();
     const browser = await chromium.launch({
-      proxy: { server: PROXY_SERVER }
+      proxy: selectedProxy ? selectedProxy : undefined
     });
 
     const context = await browser.newContext({
@@ -44,14 +90,11 @@ async function monitor() {
     const page = await context.newPage();
 
     try {
-      // Ana sayfadan TÜM yazı linklerini al
       await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 });
       
       const postLinks = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a[href*="blogspot.com/202"]'));
-        // Tekrarları temizle
-        const unique = [...new Set(links.map(a => a.href))];
-        return unique;
+        const links = Array.from(document.querySelectorAll('a[href*="://blogspot.com"]'));
+        return [...new Set(links.map(a => a.href))];
       });
 
       console.log(`Toplam ${postLinks.length} yazı bulundu.`);
