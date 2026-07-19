@@ -6,7 +6,7 @@ const BASE_URL = 'https://globalmarketsbrief.blogspot.com';
 const LOAD_THRESHOLD = 8;
 
 // SMARTPROXY / DECODO BİLGİLERİNİZ
-const PROXY_SERVER = 'http://{spee4t5rds}:{~q5kpbCV515rSjjxHq}@gate.decodo.com:10001'; // ← Burayı kendi proxy'inizle değiştirin
+const PROXY_SERVER = 'gate.decodo.com:10001:spee4t5rds:~q5kpbCV515rSjjxHq'; // ← Burayı kendi proxy'inizle değiştirin
 
 async function monitor() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
