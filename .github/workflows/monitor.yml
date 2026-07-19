@@ -1,42 +1,42 @@
-name: Blog Monitor
+name: Blogspot Saatlik Hız ve Proxy İzleme
 
 on:
+  push:
+    branches: [ main, master ]
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *' # HER SAAT BAŞI otomatik tetiklenir
+  workflow_dispatch: # Manuel tetikleme butonu
 
 jobs:
-  monitor:
+  run-monitor:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+    - name: Repoyu Klonla
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Node.js Kurulumu
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-      - name: Install Playwright + Browsers
-        run: |
-          npm init -y
-          npm install playwright
-          npx playwright install --with-deps chromium   # ← Bu satır eklendi
+    - name: Bağımlılıkları Yükle
+      run: npm install
 
-      - name: Run Monitoring Script
-        run: node monitor.js
+    - name: Playwright Tarayıcılarını Kur
+      run: npx playwright install --with-deps chromium
 
-      - name: Upload Screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: screenshots/
-          retention-days: 7
+    - name: Botu Çalıştır
+      env:
+        PROXY_LIST_SECRET: ${{ secrets.PROXY_LIST_SECRET }}
+      run: node monitor.js
 
-      - name: Check for Issues
-        id: check
-        run: |
-          if [ -f has_issue.txt ]; then
-            echo "has_issue=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_issue=false" >> $GITHUB_OUTPUT
-          fi
+    - name: Ekran Görüntülerini ve Raporları Kaydet
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          screenshots/
+          has_issue.txt
+        retention-days: 7
