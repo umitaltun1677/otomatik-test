@@ -5,7 +5,6 @@ const path = require('path');
 const BASE_URL = 'https://blogspot.com';
 const LOAD_THRESHOLD = 8;
 
-// === 1. GİTHUB SECRETS VEYA YEREL DOSYADAN PROXY OKUMA ===
 function loadProxies() {
   try {
     if (process.env.PROXY_LIST_SECRET) {
@@ -13,7 +12,7 @@ function loadProxies() {
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
-      console.log(`[BAŞARILI] GitHub Secrets üzerinden ${proxies.length} proxy yüklendi.`);
+      console.log(`[BİLGİ] GitHub Secrets üzerinden ${proxies.length} proxy algılandı.`);
       return proxies;
     }
     const filePath = path.join(process.cwd(), 'proxies.txt');
@@ -23,7 +22,7 @@ function loadProxies() {
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
-      console.log(`[BAŞARILI] Yerel proxies.txt dosyasından ${proxies.length} proxy yüklendi.`);
+      console.log(`[BİLGİ] Yerel proxies.txt dosyasından ${proxies.length} proxy yüklendi.`);
       return proxies;
     }
     return [];
@@ -34,7 +33,6 @@ function loadProxies() {
 
 const ALL_PROXIES = loadProxies();
 
-// === 2. PLAYWRIGHT FORMATINA ÇEVİRME FONKSİYONU ===
 function getRandomPlaywrightProxy() {
   if (ALL_PROXIES.length === 0) return null;
   const randomIndex = Math.floor(Math.random() * ALL_PROXIES.length);
@@ -54,6 +52,7 @@ function getRandomPlaywrightProxy() {
 }
 
 async function monitor() {
+  console.log(`🚀 Bot başlatıldı. Hedef: ${BASE_URL}`);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const screenshotDir = path.join(process.cwd(), 'screenshots');
   
@@ -71,39 +70,71 @@ async function monitor() {
   const issues = [];
   let totalScans = 0;
 
+  // ÖNCE ANA SAYFADAKİ LİNKLERİ PROXY'SİZ VEYA TEK BİR PROXY İLE ALALIM
+  let initialProxy = getRandomPlaywrightProxy();
+  let baseBrowser;
+  let postLinks = [];
+
+  try {
+    baseBrowser = await chromium.launch({ proxy: initialProxy ? initialProxy : undefined });
+    const baseContext = await baseBrowser.newContext();
+    const basePage = await baseContext.newPage();
+    console.log(`[BİLGİ] Ana sayfadan linkler toplanıyor...`);
+    await basePage.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    postLinks = await basePage.evaluate(() => {
+      const links = Array.from(document.querySelectorAll('a[href*="://blogspot.com"]'));
+      return [...new Set(links.map(a => a.href))];
+    });
+    console.log(`[BAŞARILI] Toplam ${postLinks.length} adet yazı linki bulundu.`);
+  } catch (err) {
+    console.error(`❌ Ana sayfa linkleri alınırken hata oluştu:`, err.message);
+  } finally {
+    if (baseBrowser) await baseBrowser.close();
+  }
+
+  // Eğer link bulunamadıysa işlemi bitir
+  if (postLinks.length === 0) {
+    console.log("⚠️ Tarancak link bulunamadığı için işlem sonlandırıldı.");
+    return;
+  }
+
+  // CİHAZ DÖNGÜSÜ
   for (const config of testConfigs) {
     console.log(`\n=== ${config.name.toUpperCase()} TESTİ BAŞLADI ===`);
 
-    const selectedProxy = getRandomPlaywrightProxy();
-    const browser = await chromium.launch({
-      proxy: selectedProxy ? selectedProxy : undefined
-    });
-
-    const context = await browser.newContext({
-      viewport: { width: config.width, height: config.height },
-      isMobile: config.isMobile,
-      userAgent: config.isMobile 
-        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    });
-
-    const page = await context.newPage();
-
-    try {
-      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+    // YAZI LİNKLERİ DÖNGÜSÜ
+    for (let i = 0; i < postLinks.length; i++) {
+      const url = postLinks[i];
       
-      const postLinks = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a[href*="://blogspot.com"]'));
-        return [...new Set(links.map(a => a.href))];
-      });
+      // === DEĞİŞİKLİK BURADA: HER YAZI LİNKİ İÇİN YENİ BİR PROXY SEÇİLİR ===
+      const selectedProxy = getRandomPlaywrightProxy();
+      if (selectedProxy) {
+        console.log(`[İSTEK #${i+1}] Yeni Proxy Talep Edildi -> Server: ${selectedProxy.server}`);
+      }
 
-      console.log(`Toplam ${postLinks.length} yazı bulundu.`);
+      let browser;
+      try {
+        // Her istek için tarayıcıyı yeni proxy ile sıfırdan ayağa kaldırıyoruz
+        browser = await chromium.launch({
+          proxy: selectedProxy ? selectedProxy : undefined,
+          args: ['--disable-blink-features=AutomationControlled']
+        });
 
-      for (let i = 0; i < postLinks.length; i++) {
-        const url = postLinks[i];
+        const context = await browser.newContext({
+          viewport: { width: config.width, height: config.height },
+          isMobile: config.isMobile,
+          userAgent: config.isMobile 
+            ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        });
+
+        const page = await context.newPage();
         const start = Date.now();
         
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+        console.log(`[BAĞLANTI] ${config.name} cihazıyla sayfaya gidiliyor: ${url}`);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        
         const loadTime = (Date.now() - start) / 1000;
         totalScans++;
 
@@ -113,19 +144,20 @@ async function monitor() {
         if (loadTime > LOAD_THRESHOLD) {
           hasIssue = true;
           issues.push({ device: config.name, loadTime: loadTime.toFixed(1), url });
-          console.log(`⚠️ SORUN [${config.name}] ${loadTime.toFixed(1)}s`);
+          console.log(`⚠️ SORUN TESPİTİ [${config.name}] Yüklenme: ${loadTime.toFixed(1)}s`);
         } else {
-          console.log(`✅ [${config.name}] ${loadTime.toFixed(1)}s`);
+          console.log(`✅ ONAYLANDI [${config.name}] Yüklenme: ${loadTime.toFixed(1)}s`);
         }
+
+      } catch (err) {
+        console.error(`❌ [BAĞLANTI HATASI] Link: ${url} | Hata:`, err.message);
+      } finally {
+        if (browser) await browser.close(); // Tarayıcıyı güvenli şekilde kapat ve proxy oturumunu sonlandır
       }
-    } catch (err) {
-      console.error(`Hata ${config.name}:`, err.message);
-    } finally {
-      await browser.close();
     }
   }
 
-  console.log(`\nToplam ${totalScans} tarama tamamlandı.`);
+  console.log(`\n🏁 İşlem bitti. Toplam ${totalScans} tarama farklı proxylerle tamamlandı.`);
 
   if (hasIssue) {
     fs.writeFileSync(path.join(screenshotDir, `${timestamp}-ISSUES.txt`), 
